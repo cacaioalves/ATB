@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Antimicrobianos — Prescrição automática (VO/EV/IM)</title>
+  <style>
+    :root { --b:#e6e6e6; --bg:#0b0f14; --card:#111827; --muted:#9ca3af; --txt:#e5e7eb; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;background:linear-gradient(180deg,#05070a,#0b0f14);color:var(--txt)}
+    header{position:sticky;top:0;background:rgba(11,15,20,.92);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.08);z-index:10}
+    .wrap{max-width:1100px;margin:0 auto;padding:16px}
+    h1{margin:0 0 6px;font-size:18px}
+    .sub{color:var(--muted);font-size:13px;line-height:1.35}
+    .grid{display:grid;gap:12px}
+    .controls{grid-template-columns:repeat(12,1fr);align-items:end}
+    .ctrl{grid-column:span 3;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px}
+    .ctrl label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    .ctrl input,.ctrl select{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0b1220;color:var(--txt);outline:none}
+    .ctrl small{display:block;color:var(--muted);margin-top:6px;font-size:11px}
+    .ctrl.span6{grid-column:span 6}
+    .ctrl.span12{grid-column:span 12}
+    main{padding:16px 0 40px}
+    .section{margin-top:18px}
+    .section h2{font-size:14px;margin:0 0 10px;color:#d1d5db;letter-spacing:.2px}
+    .cards{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+    .card{grid-column:span 6;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:14px}
+    @media (max-width:900px){ .card{grid-column:span 12} .ctrl{grid-column:span 6} .ctrl.span6{grid-column:span 12}}
+    @media (max-width:520px){ .ctrl{grid-column:span 12}}
+    .title{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+    .title strong{font-size:14px}
+    .tags{display:flex;flex-wrap:wrap;gap:6px}
+    .tag{font-size:11px;color:#cbd5e1;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);padding:3px 8px;border-radius:999px}
+    .routes{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 8px}
+    .btn{cursor:pointer;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:#0b1220;color:var(--txt);padding:8px 10px;font-size:12px}
+    .btn:hover{filter:brightness(1.08)}
+    .btn.active{border-color:rgba(59,130,246,.65);box-shadow:0 0 0 3px rgba(59,130,246,.18) inset}
+    .out{white-space:pre-wrap;background:rgba(0,0,0,.30);border:1px dashed rgba(255,255,255,.14);border-radius:14px;padding:12px;margin-top:10px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;font-size:12px;line-height:1.35}
+    .warn{color:#fbbf24;font-size:12px;margin-top:8px}
+    .mini{color:var(--muted);font-size:12px;line-height:1.35;margin-top:8px}
+    .searchRow{display:flex;gap:10px;flex-wrap:wrap}
+    .searchRow input{flex:1}
+    .note{margin-top:10px;color:#cbd5e1;font-size:12px}
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Antimicrobianos — prescrição automática (VO / EV / IM)</h1>
+    <div class="sub">
+      Preencha <b>Peso</b> e, se aplicável, <b>Idade</b> e/ou <b>ClCr</b>. Cada card gera:
+      <b>VO estilo receita</b> ou <b>EV/IM estilo protocolar</b>, conforme seu material.
+      <div class="note">Uso clínico: sempre conferir indicação, contexto, alergias, gestação, função renal/hepática e protocolos locais.</div>
+    </div>
+    <div class="grid controls" style="margin-top:12px">
+      <div class="ctrl">
+        <label>Peso (kg)</label>
+        <input id="peso" type="number" inputmode="decimal" step="0.1" placeholder="ex.: 12" />
+        <small>Obrigatório para cálculo.</small>
+      </div>
+      <div class="ctrl">
+        <label>Idade (dias)</label>
+        <input id="idadeDias" type="number" inputmode="numeric" step="1" placeholder="ex.: 10" />
+        <small>Use em RN/lactentes quando necessário.</small>
+      </div>
+      <div class="ctrl">
+        <label>Idade (anos)</label>
+        <input id="idadeAnos" type="number" inputmode="decimal" step="0.1" placeholder="ex.: 3" />
+        <small>Use quando o material cita &gt; 12a etc.</small>
+      </div>
+      <div class="ctrl">
+        <label>ClCr (mL/min) (opcional)</label>
+        <input id="clcr" type="number" inputmode="decimal" step="1" placeholder="ex.: 25" />
+        <small>Se preenchido, aplica ajustes (quando existem no seu texto).</small>
+      </div>
+
+      <div class="ctrl span6">
+        <label>Buscar medicamento</label>
+        <input id="search" type="text" placeholder="ex.: ceftriaxona, amoxi, vanco..." />
+        <small>Filtra cards por nome.</small>
+      </div>
+
+      <div class="ctrl span6">
+        <label>Visualização</label>
+        <select id="viewMode">
+          <option value="cards" selected>Cards</option>
+          <option value="list">Lista compacta</option>
+        </select>
+        <small>Cards (melhor) ou lista (mais rápido).</small>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="app"></div>
+</main>
+
+<script>
+/** ========= helpers ========= **/
+const fmt = (n, d=1) => {
+  if (!Number.isFinite(n)) return "—";
+  const p = Math.pow(10,d);
+  return (Math.round(n*p)/p).toString().replace(".", ",");
+};
+const clamp = (x,min,max)=>Math.max(min,Math.min(max,x));
+const has = (v)=>Number.isFinite(v) && v!==null;
+const ctxFromUI = () => {
+  const peso = parseFloat(document.getElementById("peso").value);
+  const idadeDias = parseFloat(document.getElementById("idadeDias").value);
+  const idadeAnos = parseFloat(document.getElementById("idadeAnos").value);
+  const clcr = parseFloat(document.getElementById("clcr").value);
+  return {
+    peso: (Number.isFinite(peso)? peso : null),
+    idadeDias: (Number.isFinite(idadeDias)? idadeDias : null),
+    idadeAnos: (Number.isFinite(idadeAnos)? idadeAnos : null),
+    clcr: (Number.isFinite(clcr)? clcr : null),
+  };
+};
+
+/** ========= base de dados (fiel ao seu conteúdo) =========
+ * Obs: Onde havia "regra prática", ela é usada para calcular volume.
+ * Onde havia "faixa", o texto traz mín–máx.
+ **/
+const DATA = [
+  // AMPICILINA
+  {
+    section:"Antimicrobianos",
+    name:"AMPICILINA",
+    tags:["VO","EV","ClCr"],
+    generators:[
+      {
+        route:"VO (receita) — suspensão 250mg/5mL",
+        run:(ctx)=>{
+          const p = ctx.peso;
+          if(!has(p) || p<=0) return {warn:"Preencha o peso (kg)."};
+          return { text:
+`Ampicilina suspensão 250mg/5mL _____ 1 FR
+
+Uso: (dose conforme prescrição) via oral, conforme orientação.
+* Dose (referência do material): 100mg/kg/dia fracionar de 6/6h.
+* Observação: seu material traz regra prática para EV (peso/4 mL). Para VO, mantém-se o texto fiel.`};
+        }
+      },
+      {
+        route:"EV (protocolar) — 100mg/mL (peso/4 mL por dose)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          let intervalo="6/6h";
+          const cl=ctx.clcr;
+          if(has(cl)){
+            if(cl < 10) intervalo="12/12h";
+            else if(cl>=10 && cl<=30) intervalo="8/8h ou 12/12h";
+          }
+          const mlDose = p/4;
+          const mgDose = mlDose*100;
+          return { text:
+`Ampicilina (EV) — protocolar _____
+
+Apresentação/Reconstituição: 500mg ou 1000mg → reconstituir para 10mL AD (100mg/mL).
+Dose calculada (regra prática): ${fmt(mgDose,0)} mg (≈ ${fmt(mlDose,1)} mL) EV.
+Intervalo: ${intervalo}.
+* Dose do material: 100mg/kg/dia, 6/6h.
+* Correção para ClCr: 10–30 → considerar 8/8h ou 12/12h; < 10 → 12/12h.`};
+        }
+      }
+    ]
+  },
+
+  // AMICACINA
+  {
+    section:"Antimicrobianos",
+    name:"AMICACINA",
+    tags:["EV","ClCr"],
+    generators:[
+      {
+        route:"EV (protocolar) — 50mg/mL (15mg/kg/dia)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDia = 15*p;
+          const cl=ctx.clcr;
+          let intervalo="8/8h ou 1x/dia";
+          if(has(cl)){
+            if(cl < 10) intervalo="48/48h ou 72/72h";
+            else if(cl>=10 && cl<=29) intervalo="18/18h ou 24/24h";
+            else if(cl>=30 && cl<=50) intervalo="12/12h ou 18/18h";
+          }
+          const volDia50 = mgDia/50; // 50mg/mL
+          return { text:
+`Amicacina (EV) — protocolar _____
+
+Apresentação: 100mg/2mL (50mg/mL).
+Dose: 15mg/kg/dia (máx 1,5g/dia).
+Dose calculada: ${fmt(mgDia,0)} mg/dia (≈ ${fmt(volDia50,2)} mL/dia na concentração 50mg/mL).
+Intervalo: ${intervalo}.
+Diluição: 5mg/mL em SF 0,9% ou AD.`};
+        }
+      }
+    ]
+  },
+
+  // AMOXICILINA
+  {
+    section:"Antimicrobianos",
+    name:"AMOXICILINA",
+    tags:["VO","ClCr"],
+    generators:[
+      {
+        route:"VO (receita) — 250mg/5mL (peso/3 mL) 3x/dia",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const cl=ctx.clcr;
+          let intervalo="8/8h";
+          let ajuste="";
+          if(has(cl)){
+            if(cl<10){intervalo="24/24h"; ajuste=" (ajuste ClCr: 8–20mg/kg)";}
+            else if(cl>=10 && cl<=29){intervalo="12/12h"; ajuste=" (ajuste ClCr: 8–20mg/kg)";}
+          }
+          const ml = p/3;
+          return { text:
+`Amoxicilina suspensão 250mg/5mL _____ 1 FR
+
+Uso: ${fmt(ml,1)} mL, via oral, de ${intervalo}${ajuste}.
+* Dose: 50mg/kg/dia 8/8h (ou 80–90mg/kg/dia se dose dobrada).
+* Regra prática (material): peso/3 mL por dose (250mg/5mL), 3x/dia.`};
+        }
+      },
+      {
+        route:"VO (receita) — 400mg/5mL (peso/4 mL) 2x/dia",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const cl=ctx.clcr;
+          let intervalo="12/12h";
+          let ajuste="";
+          if(has(cl)){
+            if(cl<10){intervalo="24/24h"; ajuste=" (ajuste ClCr: 8–20mg/kg)";}
+            else if(cl>=10 && cl<=29){intervalo="12/12h"; ajuste=" (ajuste ClCr: 8–20mg/kg)";}
+          }
+          const ml = p/4;
+          return { text:
+`Amoxicilina suspensão 400mg/5mL _____ 1 FR
+
+Uso: ${fmt(ml,1)} mL, via oral, de ${intervalo}${ajuste}.
+* Regra prática (material): peso/4 mL por dose (400mg/5mL), 2x/dia.`};
+        }
+      }
+    ]
+  },
+
+  // AMOXICILINA-CLAVULANATO
+  {
+    section:"Antimicrobianos",
+    name:"AMOXICILINA + CLAVULANATO",
+    tags:["VO"],
+    generators:[
+      {
+        route:"VO (receita) — 400mg/5mL (regra: peso × 0,3 mL 12/12h)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const ml = 0.3*p;
+          return { text:
+`Amoxicilina + Clavulanato suspensão 400mg/5mL _____ 1 FR
+
+Uso: ${fmt(ml,1)} mL, via oral, de 12/12h.
+* Dose: 50mg/kg/dia (cálculo pela amoxicilina). Se BD: 12/12h.
+* Regra prática (material): peso × 0,3 mL de 12/12h.`};
+        }
+      }
+    ]
+  },
+
+  // AZITROMICINA
+  {
+    section:"Antimicrobianos",
+    name:"AZITROMICINA (Zitromax)",
+    tags:["VO","EV"],
+    generators:[
+      {
+        route:"VO (receita) — suspensão 200mg/5mL (peso/4) 1x/dia",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const ml = p/4;
+          return { text:
+`Azitromicina suspensão 200mg/5mL _____ 1 FR
+
+Uso: ${fmt(ml,1)} mL, via oral, 1x/dia.
+* Dose: 10mg/kg/dia (máx 500mg/dia) ou 20mg/kg/dia (máx 1,2g/dia) se bactérias atípicas.
+* Regra prática (material): peso/4 (1x/dia).
+* Correção para ClCr: sem ajuste.`};
+        }
+      },
+      {
+        route:"EV (protocolar) — (infusão 1–3h; 1–2mg/mL)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mg10 = 10*p;
+          const mg20 = 20*p;
+          return { text:
+`Azitromicina (EV) — protocolar _____
+
+Dose: 10mg/kg/dia (=${fmt(mg10,0)} mg/dia; máx 500mg/dia) ou 20mg/kg/dia (=${fmt(mg20,0)} mg/dia; máx 1,2g/dia) se atípicas.
+Diluição: 1–2mg/mL.
+Infusão: correr em 1–3h.
+* ClCr: sem ajuste.`};
+        }
+      }
+    ]
+  },
+
+  // CEFADROXILA
+  {
+    section:"Antimicrobianos",
+    name:"CEFADROXILA",
+    tags:["VO","ClCr"],
+    generators:[
+      {
+        route:"VO (receita) — 30mg/kg/dia 12/12h (por 10 dias)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDia = 30*p;
+          const mgDose = mgDia/2;
+          const cl=ctx.clcr;
+          let obs = "";
+          if(has(cl)){
+            if(cl<10) obs = " (ClCr < 10: dose inicial 1g 36/36h e depois 500mg 36/36h)";
+            else if(cl>=10 && cl<=25) obs = " (ClCr 10–25: dose inicial 1g 24/24h e depois 500mg 24/24h)";
+            else if(cl>=25 && cl<=50) obs = " (ClCr 25–50: dose inicial 1g 12/12h e depois 500mg 12/12h)";
+          }
+          return { text:
+`Cefadroxila (suspensão 250mg/5mL ou 500mg/5mL) _____ 1 FR
+
+Uso: (calcular volume conforme concentração) via oral, de 12/12h, por 10 dias${obs}.
+* Dose: 30mg/kg/dia (≈ ${fmt(mgDia,0)} mg/dia), 12/12h (≈ ${fmt(mgDose,0)} mg/dose).`};
+        }
+      }
+    ]
+  },
+
+  // CEFALEXINA
+  {
+    section:"Antimicrobianos",
+    name:"CEFALEXINA (Keflex)",
+    tags:["VO"],
+    generators:[
+      {
+        route:"VO (receita) — suspensão 250mg/5mL (peso/4 mL) 6/6h",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const ml = p/4;
+          return { text:
+`Cefalexina suspensão 250mg/5mL _____ 1 FR
+
+Uso: ${fmt(ml,1)} mL, via oral, de 6/6h.
+* Dose: 50mg/kg/dia.
+* Regra prática (material): peso/4 mL por dose (6/6h).
+* Correção para ClCr: evitar na IR (material).`};
+        }
+      }
+    ]
+  },
+
+  // CEFALOTINA
+  {
+    section:"Antimicrobianos",
+    name:"CEFALOTINA",
+    tags:["EV","IM","ClCr"],
+    generators:[
+      {
+        route:"EV/IM (protocolar) — FA 1g (diluir em 10mL AD) + regra peso/4",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mlDose = p/4;
+          const mgDose = mlDose*100; // (se reconstituir 1g em 10mL => 100mg/mL)
+          const cl=ctx.clcr;
+          let obsCl="";
+          if(has(cl)){
+            if(cl<2) obsCl="ClCr < 2: até 500mg a cada 8h.";
+            else if(cl>=2 && cl<=10) obsCl="ClCr 2–10: até 500mg a cada 6h.";
+            else if(cl>10 && cl<=25) obsCl="ClCr 10–25: até 1g a cada 6h.";
+            else if(cl>10 && cl<=50) obsCl="ClCr 10–50: até 1,5g a cada 6h.";
+            else if(cl>=25 && cl<=50) obsCl="ClCr 25–50: sem ajuste (material).";
+          }
+          return { text:
+`Cefalotina (EV/IM) — protocolar _____
+
+Apresentação/Reconstituição: FA 1g (IM ou EV) → diluir em 10mL AD (≈100mg/mL).
+Dose: 80–160mg/kg/dia (padrão 100mg/kg/dia), administrar 6/6h.
+Regra prática (material): peso/4 mL por dose (6/6h) → ${fmt(mgDose,0)} mg (≈ ${fmt(mlDose,1)} mL) por dose.
+Correção para ClCr (material): ${obsCl || "ver faixas do material; se ClCr 25–50: sem ajuste."}`};
+        }
+      }
+    ]
+  },
+
+  // CEFTRIAXONA
+  {
+    section:"Antimicrobianos",
+    name:"CEFTRIAXONA (Rocefin, Ceftriax)",
+    tags:["EV","IM"],
+    generators:[
+      {
+        route:"EV (protocolar) — FA 1g + 5mL AD (regra: peso/2 = mL/dia)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mlDia = p/2;
+          const mlDose = mlDia/2; // se 12/12h
+          const mgPorMl = 1000/5; // 200mg/mL na reconstituição 1g/5mL
+          const mgDose = mlDose*mgPorMl;
+          const mgDia = mgDose*2;
+          let warn="";
+          if(mgDia>4000) warn="Atenção: ultrapassa 4g/dia (máximo do material).";
+          return {
+            warn: warn || undefined,
+            text:
+`Ceftriaxona (EV) — protocolar _____
+
+Apresentação: FA 250mg (IM); 500mg (IM/IV); 1000mg (IM/IV) → diluir em 5mL AD.
+Dose: 50–100mg/kg/dia em 1 ou 2 doses (se >2g/dia, dividir em 2 doses; meningite: 2 doses, máx 100–160mg/kg/dia). Máx 4g/dia.
+Regra prática (material): se diluição para 5mL AD → peso/2 = mL/dia → ${fmt(mlDia,1)} mL/dia.
+Se 12/12h: ${fmt(mgDose,0)} mg (≈ ${fmt(mlDose,1)} mL) EV de 12/12h.
+Diluição EV: (material) uso EV: 100mg/mL; rediluir para 40mg/mL em SF 0,9% e correr em 30min.
+ClCr: manter mesma dose.`};
+        }
+      }
+    ]
+  },
+
+  // CEFEPIME
+  {
+    section:"Antimicrobianos",
+    name:"CEFEPIME",
+    tags:["EV","ClCr"],
+    generators:[
+      {
+        route:"EV (protocolar) — 50mg/kg/dose 8/8h (regra: peso/2 mL/dose)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDose = 50*p;
+          const mlDose = p/2; // regra prática
+          const cl=ctx.clcr;
+          let intervalo="8/8h";
+          if(has(cl)){
+            if(cl<10) intervalo="48/48h";
+            else if(cl>=10 && cl<=50) intervalo="24/24h";
+          }
+          return { text:
+`Cefepime (EV) — protocolar _____
+
+Apresentação: FA 1000mg ou 2000mg.
+Dose: 50mg/kg/dose (máx 2g/dose).
+Dose calculada: ${fmt(mgDose,0)} mg/dose.
+Regra prática (material): peso/2 em mL/dose → ${fmt(mlDose,1)} mL/dose.
+Diluição: inicial 100mg/mL; rediluir para 40mg/mL em SF 0,9%; correr em 30min.
+Intervalo: ${intervalo} (ajuste por ClCr conforme material).`};
+        }
+      }
+    ]
+  },
+
+  // CEFTAZIDIMA
+  {
+    section:"Antimicrobianos",
+    name:"CEFTAZIDIMA",
+    tags:["EV","IM","ClCr"],
+    generators:[
+      {
+        route:"EV (protocolar) — 100–150mg/kg/dia 8/8h (regra: peso/3 mL/dose)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDiaMin = 100*p;
+          const mgDiaMax = 150*p;
+          const mlDose = p/3; // dose mínima (material)
+          const cl=ctx.clcr;
+          let intervalo="8/8h";
+          let ajuste="";
+          if(has(cl)){
+            if(cl<10){intervalo="48/48h"; ajuste=" (50mg/kg a cada 48h)";}
+            else if(cl>=10 && cl<=29){intervalo="24/24h"; ajuste=" (50mg/kg a cada 24h)";}
+            else if(cl>=30 && cl<=50){intervalo="12/12h"; ajuste=" (50mg/kg a cada 12h)";}
+          }
+          return { text:
+`Ceftazidima (EV) — protocolar _____
+
+Apresentação: FA 1000mg ou 2000mg.
+Dose: 100–150mg/kg/dia (≈ ${fmt(mgDiaMin,0)}–${fmt(mgDiaMax,0)} mg/dia), 8/8h.
+Diluição EV: diluir para 100mg/mL; rediluir para 40mg/mL; correr em 20min.
+Regra prática (material): peso/3 mL por dose (dose mínima) → ${fmt(mlDose,1)} mL/dose.
+Intervalo: ${intervalo}${ajuste}.`};
+        }
+      }
+    ]
+  },
+
+  // CIPROFLOXACINO
+  {
+    section:"Antimicrobianos",
+    name:"CIPROFLOXACINO",
+    tags:["VO","EV","ClCr"],
+    generators:[
+      {
+        route:"VO (receita) — 20mg/kg/dia 12/12h (diluir 1cp em 5mL AD)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDia = 20*p;
+          const mgDose = mgDia/2;
+          const cl=ctx.clcr;
+          let ajuste="";
+          if(has(cl)){
+            if(cl<30) ajuste=" (ClCr < 30: VO total/dia 500mg, conforme material).";
+            else if(cl>=30 && cl<=50) ajuste=" (ClCr 30–50: VO total/dia 1000mg, conforme material).";
+          }
+          return { text:
+`Ciprofloxacino comprimidos 250/500/750mg _____ 1 CX
+
+Uso: ${fmt(mgDose,0)} mg por dose, via oral, de 12/12h.${ajuste}
+* Dose VO (material): 20mg/kg/dia, 12/12h.
+* Observação (material): diluir 1 comprimido em 5mL AD.`};
+        }
+      },
+      {
+        route:"EV (protocolar) — 10mg/kg/dia 12/12h (infundir 60min)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDia=10*p;
+          const mgDose=mgDia/2;
+          const cl=ctx.clcr;
+          let ajuste="";
+          if(has(cl)){
+            if(cl<30) ajuste=" (ClCr < 30: EV total/dia 400mg, conforme material).";
+            else if(cl>=30 && cl<=50) ajuste=" (ClCr 30–50: EV total/dia 800mg, conforme material).";
+          }
+          return { text:
+`Ciprofloxacino (EV) — protocolar _____
+
+Apresentação: FA 200mg/100mL ou 400mg/200mL.
+Dose EV (material): 10mg/kg/dia, de 12/12h → ${fmt(mgDose,0)} mg/dose.
+Infusão: infundir em 60 minutos.${ajuste}`};
+        }
+      }
+    ]
+  },
+
+  // CLINDAMICINA
+  {
+    section:"Antimicrobianos",
+    name:"CLINDAMICINA",
+    tags:["EV"],
+    generators:[
+      {
+        route:"EV (protocolar) — 25–40mg/kg/dia (6/6h ou 8/8h)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDiaMin=25*p, mgDiaMax=40*p;
+          return { text:
+`Clindamicina (EV) — protocolar _____
+
+Apresentação: 150mg/mL (FA 2, 4 e 6mL).
+Dose: 25–40mg/kg/dia (≈ ${fmt(mgDiaMin,0)}–${fmt(mgDiaMax,0)} mg/dia) de 6/6h ou 8/8h (mínimo 300mg/dia).
+Diluição: 6mg/mL em SF 0,9%.
+Infusão: correr em 30min.
+ClCr: sem ajuste.`};
+        }
+      }
+    ]
+  },
+
+  // GENTAMICINA
+  {
+    section:"Antimicrobianos",
+    name:"GENTAMICINA",
+    tags:["EV","IM","ClCr"],
+    generators:[
+      {
+        route:"EV/IM (protocolar) — 5–7mg/kg/dia (1–3 doses)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDiaMin=5*p, mgDiaMax=7*p;
+          const cl=ctx.clcr;
+          let intervalo="(RN muda conforme idade/peso — material).";
+          if(has(cl)){
+            if(cl<10) intervalo="48/48h ou 72/72h";
+            else if(cl>=10 && cl<=29) intervalo="18/18h ou 24/24h";
+            else if(cl>=30 && cl<=50) intervalo="12/12h ou 18/18h";
+          }
+          return { text:
+`Gentamicina (EV/IM) — protocolar _____
+
+Apresentação: 20mg/mL ou 40mg/mL ou 80mg/2mL (EV ou IM).
+Dose: 5–7mg/kg/dia (≈ ${fmt(mgDiaMin,0)}–${fmt(mgDiaMax,0)} mg/dia) em 1–3 doses.
+Diluição: 10mg/mL em SF 0,9%.
+Infusão: correr em 30min.
+Correção para ClCr: ${intervalo}`};
+        }
+      }
+    ]
+  },
+
+  // MEROPENEM
+  {
+    section:"Antimicrobianos",
+    name:"MEROPENEM",
+    tags:["EV","ClCr"],
+    generators:[
+      {
+        route:"EV (protocolar) — 60mg/kg/dia 8/8h (meningite: dose dobrada)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDia=60*p;
+          const mgDose=mgDia/3; // 8/8h
+          const cl=ctx.clcr;
+          let ajuste="";
+          if(has(cl)){
+            if(cl<10) ajuste="ClCr < 10: 10–20mg/kg 24/24h.";
+            else if(cl>=10) ajuste="ClCr 10–20: 10–20mg/kg 12/12h.";
+            else if(cl>=30 && cl<=50) ajuste="ClCr 30–50: 20–40mg/kg 12/12h.";
+          }
+          return { text:
+`Meropenem (EV) — protocolar _____
+
+Apresentação: FA 500mg ou 1000mg.
+Dose: 60mg/kg/dia, 8/8h (meningite: dose dobrada).
+Dose calculada (8/8h): ${fmt(mgDose,0)} mg/dose (≈ ${fmt(mgDia,0)} mg/dia).
+Diluição: bolus 50mg/mL (500mg + 10mL diluente). Em 30min: 1–20mg/mL.
+Correção para ClCr (material): ${ajuste || "ClCr 30–50: 20–40mg/kg 12/12h; ClCr 10–20: 10–20mg/kg 12/12h; ClCr < 10: 10–20mg/kg 24/24h."}`};
+        }
+      }
+    ]
+  },
+
+  // METRONIDAZOL
+  {
+    section:"Antimicrobianos",
+    name:"METRONIDAZOL",
+    tags:["VO","EV"],
+    generators:[
+      {
+        route:"VO (receita) — suspensão 40mg/mL (regra: peso/3 mL/dose) 8/8h",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const ml = p/3;
+          return { text:
+`Metronidazol suspensão 40mg/mL _____ 1 FR
+
+Uso: ${fmt(ml,1)} mL, via oral, de 8/8h.
+* Dose: 30–40mg/kg/dia, 8/8h.
+* Regra prática (material): VO — peso/3 mL por dose.`};
+        }
+      },
+      {
+        route:"EV (protocolar) — FA 5mg/mL (regra: 2 × peso mL/dose) 8/8h",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const ml = 2*p;
+          return { text:
+`Metronidazol (EV) — protocolar _____
+
+Apresentação: FA 5mg/mL (solução pronta para infusão).
+Dose: 30–40mg/kg/dia, 8/8h.
+Regra prática (material): EV — 2 × peso (mL) por dose → ${fmt(ml,1)} mL/dose.
+Diluição: solução já pronta para infusão.`};
+        }
+      }
+    ]
+  },
+
+  // OXACILINA
+  {
+    section:"Antimicrobianos",
+    name:"OXACILINA",
+    tags:["EV","ClCr"],
+    generators:[
+      {
+        route:"EV (protocolar) — 150–200mg/kg/dia (4/4h ou 6/6h) (regra: peso/3 mL/dose se 4/4h)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDiaMin=150*p, mgDiaMax=200*p;
+          const mlDose = p/3;
+          return { text:
+`Oxacilina (EV) — protocolar _____
+
+Apresentação: FA 500mg.
+Dose: 150–200mg/kg/dia, 4/4h ou 6/6h (máx 1g/dose 4/4h).
+Regra prática (material): se 4/4h → peso/3 mL por dose → ${fmt(mlDose,1)} mL/dose.
+Diluição: inicial 100mg/mL; rediluir para 10mg/mL em SF 0,9%.
+ClCr: usar dose mínima na IR grave (material).`};
+        }
+      }
+    ]
+  },
+
+  // PENICILINA CRISTALINA
+  {
+    section:"Antimicrobianos",
+    name:"PENICILINA CRISTALINA",
+    tags:["EV","ClCr"],
+    generators:[
+      {
+        route:"EV (protocolar) — 200.000 UI/kg/dia 6/6h (regra: peso/10 mL por dose)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const uiDia = 200000*p;
+          const uiDose = uiDia/4;
+          const mlDose = p/10;
+          const cl=ctx.clcr;
+          let ajuste="";
+          if(has(cl)){
+            if(cl<10) ajuste="ClCr < 10: 20–50% da dose (material).";
+            else if(cl>=30 && cl<=50) ajuste="ClCr 30–50: 75% da dose (material).";
+          }
+          return { text:
+`Penicilina Cristalina (EV) — protocolar _____
+
+Apresentação: FA 1.000.000 UI ou 5.000.000 UI.
+Dose: 200.000 UI/kg/dia, 6/6h (máx 24.000.000 UI/dia).
+Dose calculada: ${fmt(uiDia,0)} UI/dia → ${fmt(uiDose,0)} UI/dose (6/6h).
+Diluição: 500.000 UI/mL (1 FA 5.000.000 + 8mL AD → 500.000 UI/mL).
+Rediluição: < 1 ano → 50.000 UI/mL; > 1 ano → 100.000 UI/mL.
+Regra prática (material): peso/10 mL por dose → ${fmt(mlDose,2)} mL/dose (6/6h).
+Correção para ClCr: ${ajuste || "ClCr 30–50: 75% da dose; ClCr < 10: 20–50% da dose."}`};
+        }
+      }
+    ]
+  },
+
+  // PENICILINA BENZATINA
+  {
+    section:"Antimicrobianos",
+    name:"PENICILINA BENZATINA",
+    tags:["IM"],
+    generators:[
+      {
+        route:"IM (protocolar) — dose única 25–50 mil UI/kg",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const uiMin=25000*p, uiMax=50000*p;
+          return { text:
+`Penicilina Benzatina (IM) — protocolar _____
+
+Apresentação: FA 1.200.000 UI ou 600.000 UI.
+Dose: 25–50 mil UI/kg/dose — DOSE ÚNICA (faringite, impetigo).
+Dose calculada: ${fmt(uiMin,0)}–${fmt(uiMax,0)} UI (dose única).`};
+        }
+      }
+    ]
+  },
+
+  // PENICILINA V
+  {
+    section:"Antimicrobianos",
+    name:"PENICILINA V (Pen-Ve-Oral)",
+    tags:["VO"],
+    generators:[
+      {
+        route:"VO (receita) — suspensão 400.000 UI/5mL (regra: peso/3 mL por dose) 12/12h por 5 dias",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const ml=p/3;
+          const uiMin=25000*p, uiMax=50000*p;
+          return { text:
+`Penicilina V suspensão 400.000 UI/5mL _____ 1 FR
+
+Uso: ${fmt(ml,1)} mL, via oral, de 12/12h, por 5 dias.
+* Dose: 25–50 mil UI/kg/dose (infecções leves, faringites, piodermite) → ${fmt(uiMin,0)}–${fmt(uiMax,0)} UI/dose.
+* Regra prática (material): peso/3 mL por dose.`};
+        }
+      }
+    ]
+  },
+
+  // SULFA + TMP
+  {
+    section:"Antimicrobianos",
+    name:"SULFAMETOXAZOL + TRIMETOPRIM",
+    tags:["VO"],
+    generators:[
+      {
+        route:"VO (receita) — suspensão 200+40mg/5mL (regra: peso/2 mL por dose) 12/12h",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const ml=p/2;
+          return { text:
+`Sulfametoxazol + Trimetoprim suspensão 200mg + 40mg/5mL _____ 1 FR
+
+Uso: ${fmt(ml,1)} mL, via oral, de 12/12h.
+* Dose (material): 40mg/kg/dia (12/12h).
+* Regra prática (material): peso/2 mL por dose.`};
+        }
+      }
+    ]
+  },
+
+  // VANCOMICINA
+  {
+    section:"Antimicrobianos",
+    name:"VANCOMICINA",
+    tags:["EV"],
+    generators:[
+      {
+        route:"EV (protocolar) — 40mg/kg/dia 6/6h (regra: peso/5 mL por dose)",
+        run:(ctx)=>{
+          const p=ctx.peso; if(!has(p)||p<=0) return {warn:"Preencha o peso (kg)."};
+          const mgDia=40*p;
+          const mgDose=mgDia/4;
+          const mlDose=p/5;
+          return { text:
+`Vancomicina (EV) — protocolar _____
+
+Apresentação: FA 1g (50mg/mL).
+Dose: 40mg/kg/dia, 6/6h → ${fmt(mgDose,0)} mg/dose (≈ ${fmt(mgDia,0)} mg/dia).
+Regra prática (material): peso/5 mL por dose → ${fmt(mlDose,1)} mL/dose.
+Diluição: 2,5–5mg/mL em SF 0,9% ou SG 5%. Infundir em 1h.`};
+        }
+      }
+    ]
+  },
+];
+
+/** ========= UI rendering ========= **/
+let state = { activeRouteByMed: new Map() };
+
+function buildCard(med, ctx){
+  const route = state.activeRouteByMed.get(med.name) || med.generators[0].route;
+  const gen = med.generators.find(g=>g.route===route) || med.generators[0];
+  const res = gen.run(ctx);
+
+  const routesHtml = med.generators.map(g=>{
+    const active = (g.route===route) ? "active" : "";
+    return `<button class="btn ${active}" data-med="${escapeHtml(med.name)}" data-route="${escapeHtml(g.route)}">${escapeHtml(g.route)}</button>`;
+  }).join("");
+
+  return `
+    <div class="card" data-name="${escapeHtml(med.name.toLowerCase())}">
+      <div class="title">
+        <div>
+          <strong>${escapeHtml(med.name)}</strong>
+          <div class="tags">${(med.tags||[]).map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>
+        </div>
+      </div>
+      <div class="routes">${routesHtml}</div>
+      ${res?.warn ? `<div class="warn">⚠️ ${escapeHtml(res.warn)}</div>` : ""}
+      <div class="out">${escapeHtml(res?.text || "—")}</div>
+      <div class="mini">Conteúdo baseado no seu material (HIAS/Sabin — julho/2017) conforme o texto enviado.</div>
+    </div>
+  `;
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function render(){
+  const app = document.getElementById("app");
+  const ctx = ctxFromUI();
+  const search = (document.getElementById("search").value || "").trim().toLowerCase();
+  const viewMode = document.getElementById("viewMode").value;
+
+  const meds = DATA.filter(m => !search || m.name.toLowerCase().includes(search));
+
+  // Agrupar por seção
+  const bySection = new Map();
+  for(const m of meds){
+    if(!bySection.has(m.section)) bySection.set(m.section, []);
+    bySection.get(m.section).push(m);
+  }
+
+  let html = "";
+  for(const [sec, items] of bySection.entries()){
+    html += `<div class="section"><h2>${escapeHtml(sec)}</h2>`;
+    if(viewMode==="list"){
+      html += `<div class="mini">Modo lista: clique nos botões de rota para alternar VO/EV/IM.</div>`;
+    }
+    html += `<div class="cards">`;
+    html += items.map(m => buildCard(m, ctx)).join("");
+    html += `</div></div>`;
+  }
+
+  app.innerHTML = html;
+
+  // bind route buttons
+  document.querySelectorAll("button[data-med][data-route]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const med = btn.getAttribute("data-med");
+      const route = btn.getAttribute("data-route");
+      state.activeRouteByMed.set(med, route);
+      render();
+    });
+  });
+}
+
+["peso","idadeDias","idadeAnos","clcr","search","viewMode"].forEach(id=>{
+  document.getElementById(id).addEventListener("input", render);
+  document.getElementById(id).addEventListener("change", render);
+});
+
+render();
+</script>
+</body>
+</html>
